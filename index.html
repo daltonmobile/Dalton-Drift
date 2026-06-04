@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Dalton Drift</title>
+<style>
+*{margin:0;padding:0;-webkit-box-sizing:border-box;box-sizing:border-box}
+html,body{
+  background:#000;width:100%;height:100%;
+  display:-webkit-flex;display:flex;
+  -webkit-justify-content:center;justify-content:center;
+  -webkit-align-items:center;align-items:center;
+  overflow:hidden;touch-action:none;
+  -webkit-user-select:none;user-select:none;
+  -webkit-tap-highlight-color:transparent
+}
+canvas{display:block;max-width:100%;max-height:100%;
+  image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// =============================================================
+// DALTON DRIFT — Main Menu   |   ES5 / Niotron WebViewer Safe
+// =============================================================
+var canvas = document.getElementById('c');
+var ctx    = canvas.getContext('2d');
+var GW = 480, GH = 800;
+canvas.width = GW; canvas.height = GH;
+
+function resize() {
+  var ww = window.innerWidth, wh = window.innerHeight, r = GW / GH, sw, sh;
+  if (ww / wh < r) { sw = ww; sh = Math.round(sw / r); }
+  else              { sh = wh; sw = Math.round(sh * r); }
+  canvas.style.width = sw + 'px'; canvas.style.height = sh + 'px';
+}
+resize(); window.addEventListener('resize', resize);
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+function rrect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+function inRect(x, y, r) { return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h; }
+
+// ---- PERSISTENT STATE ----
+var carColor  = localStorage.getItem('dalton_car_color')  || '#7622CC';
+var carColor2 = localStorage.getItem('dalton_car_color2') || '#5610A4';
+var glowColor = localStorage.getItem('dalton_glow_color') || '#AA00FF';
+var hiScore   = parseInt(localStorage.getItem('dalton_hi') || '0', 10);
+var soundOn   = localStorage.getItem('dalton_sound') !== 'false';
+
+// ---- BUTTON HIT ZONES ----
+var BTN_RACE   = { x: GW / 2 - 115, y: GH - 268, w: 230, h: 58 };
+var BTN_GARAGE = { x: GW / 2 - 90,  y: GH - 198, w: 180, h: 48 };
+var BTN_SOUND  = { x: GW - 80, y: 8, w: 72, h: 24 };
+
+// ---- STARS ----
+var stars = [];
+(function() {
+  for (var i = 0; i < 90; i++) {
+    stars.push({ x: rand(0, GW), y: rand(4, 220), r: rand(0.4, 2.1),
+      a: rand(0.2, 1.0), flk: rand(0, 6.28) });
+  }
+}());
+
+var frame = 0;
+
+// ================================================================
+// DRAW: SYNTHWAVE BACKGROUND
+// ================================================================
+function drawBg() {
+  // Sky gradient
+  var sky = ctx.createLinearGradient(0, 0, 0, GH);
+  sky.addColorStop(0, '#000008'); sky.addColorStop(0.28, '#0A0022');
+  sky.addColorStop(0.5, '#180040'); sky.addColorStop(0.65, '#2A006A');
+  sky.addColorStop(0.75, '#1A0040'); sky.addColorStop(1, '#0A000A');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, GW, GH);
+
+  // Stars
+  for (var i = 0; i < stars.length; i++) {
+    var s = stars[i];
+    var fa = s.a * (0.65 + 0.35 * Math.sin(frame * 0.022 + s.flk));
+    ctx.save(); ctx.globalAlpha = fa; ctx.fillStyle = '#FFFFFF';
+    if (s.r > 1.4) { ctx.shadowColor = '#AACCFF'; ctx.shadowBlur = 5; }
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+
+  // Moon
+  ctx.save(); ctx.shadowColor = '#CCCCFF'; ctx.shadowBlur = 22;
+  ctx.fillStyle = '#D8DAFF';
+  ctx.beginPath(); ctx.arc(GW * 0.82, 68, 18, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#050015';
+  ctx.beginPath(); ctx.arc(GW * 0.82 + 9, 64, 15, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // Perspective grid floor
+  var gy = GH * 0.52;  // horizon of grid
+  var gh = GH;
+
+  // Horizontal grid lines
+  ctx.save(); ctx.globalAlpha = 0.6;
+  for (var hi = 1; hi <= 16; hi++) {
+    var t = hi / 16;
+    var yy = lerp(gy, gh, t * t);
+    var xw = lerp(0, GW * 0.5, t);
+    ctx.strokeStyle = 'rgba(200,0,255,' + (t * 0.65) + ')';
+    ctx.lineWidth = t * 1.4;
+    ctx.beginPath(); ctx.moveTo(GW / 2 - xw, yy); ctx.lineTo(GW / 2 + xw, yy); ctx.stroke();
+  }
+  // Vertical grid lines (converging)
+  for (var vi = -9; vi <= 9; vi++) {
+    var xoff = vi * 24;
+    ctx.strokeStyle = 'rgba(0,200,255,0.38)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(GW / 2 + xoff * 0.5, gy);
+    ctx.lineTo(GW / 2 + xoff * 2.2, gh);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Horizon glow
+  var hg = ctx.createRadialGradient(GW / 2, gy, 8, GW / 2, gy, 280);
+  hg.addColorStop(0, 'rgba(220,80,255,0.52)');
+  hg.addColorStop(0.38, 'rgba(130,20,200,0.18)');
+  hg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = hg; ctx.fillRect(0, gy - 55, GW, 110);
+
+  // Horizon line
+  ctx.save(); ctx.shadowColor = '#DD00FF'; ctx.shadowBlur = 20;
+  ctx.strokeStyle = '#BB00EE'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(GW, gy); ctx.stroke(); ctx.restore();
+}
+
+// ================================================================
+// DRAW: NEON TITLE
+// ================================================================
+function drawTitle() {
+  // DALTON
+  ctx.save(); ctx.shadowColor = '#00FFFF'; ctx.shadowBlur = 38;
+  ctx.fillStyle = '#00EEFF';
+  ctx.font = 'bold 62px Arial Black, Arial';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('DALTON', GW / 2, 108); ctx.restore();
+
+  // DRIFT
+  ctx.save(); ctx.shadowColor = '#FF00FF'; ctx.shadowBlur = 38;
+  ctx.fillStyle = '#FF22FF';
+  ctx.font = 'bold 62px Arial Black, Arial';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('DRIFT', GW / 2, 172); ctx.restore();
+
+  // Neon divider line
+  ctx.save(); ctx.shadowColor = '#FF00FF'; ctx.shadowBlur = 10;
+  ctx.strokeStyle = 'rgba(255,0,255,0.45)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(75, 206); ctx.lineTo(GW - 75, 206); ctx.stroke(); ctx.restore();
+
+  // Subtitle
+  ctx.fillStyle = '#9977CC'; ctx.font = '13px Arial'; ctx.textAlign = 'center';
+  ctx.fillText('NIGHT STREET RACING', GW / 2, 226);
+}
+
+// ================================================================
+// DRAW: CAR SHOWCASE
+// ================================================================
+function drawCarShowcase() {
+  var cx = GW / 2, cy = GH * 0.50;
+  var W = 30, H = 60;
+
+  // Ground glow (pulses with frame)
+  var pulse = 0.65 + 0.35 * Math.sin(frame * 0.04);
+  ctx.save(); ctx.globalAlpha = pulse * 0.5;
+  ctx.shadowColor = glowColor; ctx.shadowBlur = 55;
+  ctx.strokeStyle = glowColor; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.ellipse(cx, cy + H + 12, 60, 16, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+
+  // Spotlight from above
+  var sp = ctx.createRadialGradient(cx, cy - 80, 15, cx, cy, 180);
+  sp.addColorStop(0, 'rgba(255,255,220,0.18)');
+  sp.addColorStop(0.5, 'rgba(200,200,180,0.07)');
+  sp.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sp; ctx.fillRect(cx - 200, cy - 80, 400, 300);
+
+  // Headlight sweep animation
+  var sw = Math.sin(frame * 0.025) * 55;
+  ctx.save(); ctx.globalAlpha = 0.22;
+  ctx.shadowColor = '#FFFFAA'; ctx.shadowBlur = 20;
+  ctx.fillStyle = '#FFFFCC';
+  ctx.beginPath();
+  ctx.moveTo(cx - W * 0.7, cy - H * 0.76);
+  ctx.lineTo(cx - W * 0.7 + sw - 60, cy - H * 1.9);
+  ctx.lineTo(cx - W * 0.7 + sw + 30, cy - H * 1.9);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + W * 0.7, cy - H * 0.76);
+  ctx.lineTo(cx + W * 0.7 + sw - 30, cy - H * 1.9);
+  ctx.lineTo(cx + W * 0.7 + sw + 60, cy - H * 1.9);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  // Body
+  ctx.save(); ctx.translate(cx, cy);
+  var bg = ctx.createLinearGradient(-W, -H, W, H);
+  bg.addColorStop(0, carColor); bg.addColorStop(0.5, carColor); bg.addColorStop(1, carColor2);
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.moveTo(0, -H);
+  ctx.quadraticCurveTo(W * 0.9, -H * 0.82, W, -H * 0.38);
+  ctx.lineTo(W * 1.04, H * 0.24);
+  ctx.quadraticCurveTo(W * 0.94, H * 0.88, 0, H);
+  ctx.quadraticCurveTo(-W * 0.94, H * 0.88, -W * 1.04, H * 0.24);
+  ctx.lineTo(-W, -H * 0.38);
+  ctx.quadraticCurveTo(-W * 0.9, -H * 0.82, 0, -H);
+  ctx.closePath(); ctx.fill();
+
+  // Roof
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; rrect(-W * 0.58, -H * 0.08, W * 1.16, H * 0.52, 5); ctx.fill();
+  // Windshield
+  ctx.fillStyle = 'rgba(120,200,255,0.55)';
+  ctx.beginPath();
+  ctx.moveTo(-W * 0.74, -H * 0.1); ctx.lineTo(W * 0.74, -H * 0.1);
+  ctx.lineTo(W * 0.58, -H * 0.43); ctx.lineTo(-W * 0.58, -H * 0.43);
+  ctx.closePath(); ctx.fill();
+  // Rear window
+  ctx.fillStyle = 'rgba(100,158,218,0.45)';
+  ctx.beginPath();
+  ctx.moveTo(-W * 0.62, H * 0.28); ctx.lineTo(W * 0.62, H * 0.28);
+  ctx.lineTo(W * 0.5, H * 0.58); ctx.lineTo(-W * 0.5, H * 0.58);
+  ctx.closePath(); ctx.fill();
+  // Headlights
+  ctx.save(); ctx.shadowColor = '#FFFFD0'; ctx.shadowBlur = 14; ctx.fillStyle = '#FFFFD0';
+  ctx.beginPath(); ctx.ellipse(-W * 0.6, -H * 0.78, 5.5, 4, 0.22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(W * 0.6, -H * 0.78, 5.5, 4, -0.22, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // Tail lights
+  ctx.save(); ctx.shadowColor = '#FF0000'; ctx.shadowBlur = 15; ctx.fillStyle = '#FF2222';
+  ctx.fillRect(-W, H * 0.78, W * 0.7, 5); ctx.fillRect(W * 0.3, H * 0.78, W * 0.7, 5);
+  ctx.restore();
+  // Wheels
+  ctx.fillStyle = '#0D0D0D';
+  ctx.beginPath(); ctx.ellipse(-W * 1.1, -H * 0.5, 7, 5, 0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(W * 1.1, -H * 0.5, 7, 5, -0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-W * 1.1, H * 0.52, 7, 5, 0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(W * 1.1, H * 0.52, 7, 5, -0.14, 0, Math.PI * 2); ctx.fill();
+  // Neon underglow strip
+  ctx.save(); ctx.shadowColor = glowColor; ctx.shadowBlur = 22;
+  var ug = ctx.createLinearGradient(-W, H, W, H);
+  ug.addColorStop(0, 'rgba(150,0,255,0)'); ug.addColorStop(0.2, glowColor);
+  ug.addColorStop(0.5, glowColor); ug.addColorStop(0.8, glowColor);
+  ug.addColorStop(1, 'rgba(150,0,255,0)');
+  ctx.fillStyle = ug; ctx.globalAlpha = 0.8; ctx.fillRect(-W, H + 1, W * 2, 4);
+  ctx.restore();
+
+  ctx.restore(); // end car translate
+}
+
+// ================================================================
+// DRAW: BUTTONS
+// ================================================================
+function drawButtons() {
+  var pulse = 0.65 + 0.35 * Math.sin(frame * 0.06);
+
+  // RACE NOW
+  ctx.save(); ctx.globalAlpha = pulse;
+  ctx.shadowColor = '#00DDAA'; ctx.shadowBlur = 24;
+  ctx.fillStyle = '#00BB88';
+  rrect(BTN_RACE.x, BTN_RACE.y, BTN_RACE.w, BTN_RACE.h, 29); ctx.fill();
+  ctx.shadowBlur = 0; ctx.fillStyle = '#000020';
+  ctx.font = 'bold 20px Arial Black, Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('RACE NOW', GW / 2, BTN_RACE.y + BTN_RACE.h / 2); ctx.restore();
+
+  // GARAGE
+  ctx.save(); ctx.globalAlpha = 0.88;
+  ctx.shadowColor = '#AA00FF'; ctx.shadowBlur = 16;
+  ctx.fillStyle = '#5500AA';
+  rrect(BTN_GARAGE.x, BTN_GARAGE.y, BTN_GARAGE.w, BTN_GARAGE.h, 24); ctx.fill();
+  ctx.strokeStyle = 'rgba(180,0,255,0.5)'; ctx.lineWidth = 1.5;
+  rrect(BTN_GARAGE.x, BTN_GARAGE.y, BTN_GARAGE.w, BTN_GARAGE.h, 24); ctx.stroke();
+  ctx.shadowBlur = 0; ctx.fillStyle = '#DDAAFF';
+  ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('\uD83C\uDFCE GARAGE', GW / 2, BTN_GARAGE.y + BTN_GARAGE.h / 2);
+  ctx.restore();
+
+  // Hi-score
+  if (hiScore > 0) {
+    ctx.fillStyle = '#FFD700'; ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'center'; ctx.fillText('BEST SCORE: ' + hiScore, GW / 2, GH - 140);
+  }
+
+  // Version / phase tag
+  ctx.fillStyle = 'rgba(120,120,160,0.5)'; ctx.font = '9px Arial';
+  ctx.textAlign = 'center'; ctx.fillText('PHASE 1  |  v2.0', GW / 2, GH - 118);
+}
+
+// ================================================================
+// DRAW: TOP BAR (sound toggle)
+// ================================================================
+function drawTopBar() {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  rrect(BTN_SOUND.x, BTN_SOUND.y, BTN_SOUND.w, BTN_SOUND.h, 6); ctx.fill();
+  ctx.fillStyle = soundOn ? '#00FF99' : '#FF3344';
+  ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(soundOn ? 'SFX ON' : 'SFX OFF', BTN_SOUND.x + BTN_SOUND.w / 2, BTN_SOUND.y + 12);
+}
+
+// ================================================================
+// MAIN DRAW + LOOP
+// ================================================================
+function draw() {
+  ctx.clearRect(0, 0, GW, GH);
+  drawBg();
+  drawTitle();
+  drawCarShowcase();
+  drawButtons();
+  drawTopBar();
+}
+
+function loop() { frame++; draw(); requestAnimationFrame(loop); }
+
+// ================================================================
+// INPUT
+// ================================================================
+function getXY(cx, cy) {
+  var r = canvas.getBoundingClientRect();
+  return { x: (cx - r.left) * (GW / r.width), y: (cy - r.top) * (GH / r.height) };
+}
+
+function handleTap(gx, gy) {
+  if (inRect(gx, gy, BTN_RACE))   { window.location.href = 'game.html'; return; }
+  if (inRect(gx, gy, BTN_GARAGE)) { window.location.href = 'garage.html'; return; }
+  if (inRect(gx, gy, BTN_SOUND))  { soundOn = !soundOn; localStorage.setItem('dalton_sound', soundOn ? 'true' : 'false'); }
+}
+
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  var p = getXY(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  handleTap(p.x, p.y);
+}, { passive: false });
+canvas.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('mousedown', function(e) {
+  var p = getXY(e.clientX, e.clientY); handleTap(p.x, p.y);
+});
+document.addEventListener('keydown', function(e) {
+  if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); window.location.href = 'game.html'; }
+  if (e.keyCode === 71) window.location.href = 'garage.html';
+  if (e.keyCode === 77) { soundOn = !soundOn; localStorage.setItem('dalton_sound', soundOn ? 'true' : 'false'); }
+});
+
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Dalton Drift — Garage</title>
+<style>
+*{margin:0;padding:0;-webkit-box-sizing:border-box;box-sizing:border-box}
+html,body{
+  background:#000;width:100%;height:100%;
+  display:-webkit-flex;display:flex;
+  -webkit-justify-content:center;justify-content:center;
+  -webkit-align-items:center;align-items:center;
+  overflow:hidden;touch-action:none;
+  -webkit-user-select:none;user-select:none;
+  -webkit-tap-highlight-color:transparent
+}
+canvas{display:block;max-width:100%;max-height:100%;
+  image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// =============================================================
+// DALTON DRIFT — Garage   |   ES5 / Niotron Safe
+// =============================================================
+var canvas = document.getElementById('c');
+var ctx    = canvas.getContext('2d');
+var GW = 480, GH = 800;
+canvas.width = GW; canvas.height = GH;
+
+function resize() {
+  var ww = window.innerWidth, wh = window.innerHeight, r = GW / GH, sw, sh;
+  if (ww / wh < r) { sw = ww; sh = Math.round(sw / r); }
+  else              { sh = wh; sw = Math.round(sh * r); }
+  canvas.style.width = sw + 'px'; canvas.style.height = sh + 'px';
+}
+resize(); window.addEventListener('resize', resize);
+
+function rrect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+function rand(a, b) { return a + Math.random() * (b - a); }
+function inRect(x, y, r) { return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h; }
+
+// ---- COLOUR OPTIONS ----
+var BODY_COLORS = [
+  { name: 'Neon Purple',  c: '#7622CC', d: '#4A0888' },
+  { name: 'Blood Red',    c: '#CC1A1A', d: '#881010' },
+  { name: 'Ice Blue',     c: '#1A55CC', d: '#0A2888' },
+  { name: 'Venom Green',  c: '#22CC44', d: '#0A8822' },
+  { name: 'Arctic White', c: '#E0E0EC', d: '#9090A8' },
+  { name: 'Carbon Black', c: '#282835', d: '#101018' },
+  { name: 'Solar Gold',   c: '#CCA820', d: '#886800' },
+  { name: 'Rose',         c: '#CC5888', d: '#882244' },
+  { name: 'Cyber Teal',   c: '#20AACC', d: '#0A6688' },
+  { name: 'Sunset',       c: '#CC6620', d: '#884400' },
+  { name: 'Storm Silver', c: '#7A8899', d: '#445566' },
+  { name: 'Deep Navy',    c: '#1A2888', d: '#0A1255' }
+];
+
+var GLOW_COLORS = [
+  { name: 'Purple',  c: '#AA00FF' },
+  { name: 'Cyan',    c: '#00AAFF' },
+  { name: 'Magenta', c: '#FF00CC' },
+  { name: 'Green',   c: '#00FF88' },
+  { name: 'Orange',  c: '#FF6600' },
+  { name: 'Pink',    c: '#FF44AA' }
+];
+
+// ---- STATE ----
+var selBody = 0, selGlow = 0;
+
+// Load saved
+(function() {
+  var sc = localStorage.getItem('dalton_car_color');
+  var sg = localStorage.getItem('dalton_glow_color');
+  if (sc) {
+    for (var i = 0; i < BODY_COLORS.length; i++) {
+      if (BODY_COLORS[i].c === sc) { selBody = i; break; }
+    }
+  }
+  if (sg) {
+    for (var j = 0; j < GLOW_COLORS.length; j++) {
+      if (GLOW_COLORS[j].c === sg) { selGlow = j; break; }
+    }
+  }
+}());
+
+var frame = 0;
+
+// ---- BUTTON ZONES ----
+var BTN_SAVE = { x: GW / 2 - 110, y: GH - 130, w: 220, h: 52 };
+var BTN_BACK = { x: GW / 2 - 70,  y: GH - 68,  w: 140, h: 40 };
+var BTN_HEAD = { x: 8, y: 8, w: 72, h: 30 };
+
+// ---- SWATCH ZONES (body colours, 4 per row × 3 rows) ----
+var swatchSize = 46, swatchPad = 12;
+var swatchStartX = (GW - (4 * swatchSize + 3 * swatchPad)) / 2;
+var swatchStartY = 440;
+var bodyZones = [];
+(function() {
+  for (var i = 0; i < BODY_COLORS.length; i++) {
+    var col = i % 4, row = Math.floor(i / 4);
+    bodyZones.push({
+      x: swatchStartX + col * (swatchSize + swatchPad),
+      y: swatchStartY + row * (swatchSize + swatchPad),
+      w: swatchSize, h: swatchSize
+    });
+  }
+}());
+
+// Glow swatches (6 in a row)
+var glowSize = 44, glowPad = 10;
+var glowStartX = (GW - (6 * glowSize + 5 * glowPad)) / 2;
+var glowStartY = 624;
+var glowZones = [];
+(function() {
+  for (var i = 0; i < GLOW_COLORS.length; i++) {
+    glowZones.push({ x: glowStartX + i * (glowSize + glowPad), y: glowStartY, w: glowSize, h: glowSize });
+  }
+}());
+
+// ================================================================
+// DRAW: BACKGROUND
+// ================================================================
+function drawBg() {
+  ctx.fillStyle = '#06060E'; ctx.fillRect(0, 0, GW, GH);
+  // Subtle grid
+  ctx.strokeStyle = '#0C0C1A'; ctx.lineWidth = 1;
+  for (var x = 0; x < GW; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GH); ctx.stroke();
+  }
+  for (var y = 0; y < GH; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(GW, y); ctx.stroke();
+  }
+  // Neon side strips
+  ctx.save(); ctx.shadowColor = '#AA00FF'; ctx.shadowBlur = 18;
+  ctx.strokeStyle = 'rgba(170,0,255,0.25)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 68); ctx.lineTo(0, GH - 68); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(GW, 68); ctx.lineTo(GW, GH - 68); ctx.stroke();
+  ctx.restore();
+}
+
+// ================================================================
+// DRAW: HEADER
+// ================================================================
+function drawHeader() {
+  // Back button
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; rrect(BTN_HEAD.x, BTN_HEAD.y, BTN_HEAD.w, BTN_HEAD.h, 8); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,200,255,0.3)'; ctx.lineWidth = 1;
+  rrect(BTN_HEAD.x, BTN_HEAD.y, BTN_HEAD.w, BTN_HEAD.h, 8); ctx.stroke();
+  ctx.fillStyle = '#00BBFF'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('\u2190 MENU', BTN_HEAD.x + BTN_HEAD.w / 2, BTN_HEAD.y + BTN_HEAD.h / 2);
+
+  // Title
+  ctx.save(); ctx.shadowColor = '#FF00FF'; ctx.shadowBlur = 20;
+  ctx.fillStyle = '#FF22FF'; ctx.font = 'bold 28px Arial Black, Arial';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('GARAGE', GW / 2, 23); ctx.restore();
+
+  // Divider
+  ctx.save(); ctx.shadowColor = '#AA00FF'; ctx.shadowBlur = 8;
+  ctx.strokeStyle = 'rgba(170,0,255,0.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(20, 46); ctx.lineTo(GW - 20, 46); ctx.stroke(); ctx.restore();
+}
+
+// ================================================================
+// DRAW: CAR PREVIEW
+// ================================================================
+function drawCarPreview() {
+  var cx = GW / 2, cy = 240;
+  var W = 38, H = 76;
+  var bc  = BODY_COLORS[selBody].c;
+  var bc2 = BODY_COLORS[selBody].d;
+  var gc  = GLOW_COLORS[selGlow].c;
+  var pulse = 0.65 + 0.35 * Math.sin(frame * 0.045);
+
+  // Platform reflection
+  ctx.save(); ctx.globalAlpha = 0.18;
+  ctx.fillStyle = '#222230';
+  ctx.beginPath(); ctx.ellipse(cx, cy + H + 22, 90, 20, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+
+  // Ground underglow
+  ctx.save(); ctx.globalAlpha = pulse * 0.55;
+  ctx.shadowColor = gc; ctx.shadowBlur = 50;
+  ctx.strokeStyle = gc; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.ellipse(cx, cy + H + 8, 65, 16, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+
+  // Spotlight
+  var sp = ctx.createRadialGradient(cx, cy - 100, 10, cx, cy, 200);
+  sp.addColorStop(0, 'rgba(255,255,220,0.2)');
+  sp.addColorStop(0.5, 'rgba(200,200,180,0.08)');
+  sp.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sp; ctx.fillRect(cx - 220, cy - 100, 440, 360);
+
+  // Headlight sweep
+  var sw = Math.sin(frame * 0.028) * 50;
+  ctx.save(); ctx.globalAlpha = 0.18;
+  ctx.fillStyle = '#FFFFC8';
+  ctx.beginPath();
+  ctx.moveTo(cx - W * 0.7, cy - H * 0.76);
+  ctx.lineTo(cx - W * 0.7 + sw - 55, cy - H * 1.8);
+  ctx.lineTo(cx - W * 0.7 + sw + 28, cy - H * 1.8);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + W * 0.7, cy - H * 0.76);
+  ctx.lineTo(cx + W * 0.7 + sw - 28, cy - H * 1.8);
+  ctx.lineTo(cx + W * 0.7 + sw + 55, cy - H * 1.8);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+
+  // Car body
+  ctx.save(); ctx.translate(cx, cy);
+  var bg = ctx.createLinearGradient(-W, -H, W, H);
+  bg.addColorStop(0, bc); bg.addColorStop(0.5, bc); bg.addColorStop(1, bc2);
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.moveTo(0, -H);
+  ctx.quadraticCurveTo(W * 0.9, -H * 0.82, W, -H * 0.38);
+  ctx.lineTo(W * 1.04, H * 0.24);
+  ctx.quadraticCurveTo(W * 0.94, H * 0.88, 0, H);
+  ctx.quadraticCurveTo(-W * 0.94, H * 0.88, -W * 1.04, H * 0.24);
+  ctx.lineTo(-W, -H * 0.38);
+  ctx.quadraticCurveTo(-W * 0.9, -H * 0.82, 0, -H);
+  ctx.closePath(); ctx.fill();
+
+  // Roof
+  ctx.fillStyle = 'rgba(0,0,0,0.38)'; rrect(-W * 0.58, -H * 0.08, W * 1.16, H * 0.52, 6); ctx.fill();
+  // Windshield
+  ctx.fillStyle = 'rgba(120,200,255,0.55)';
+  ctx.beginPath();
+  ctx.moveTo(-W * 0.74, -H * 0.1); ctx.lineTo(W * 0.74, -H * 0.1);
+  ctx.lineTo(W * 0.58, -H * 0.43); ctx.lineTo(-W * 0.58, -H * 0.43);
+  ctx.closePath(); ctx.fill();
+  // Rear window
+  ctx.fillStyle = 'rgba(100,158,218,0.45)';
+  ctx.beginPath();
+  ctx.moveTo(-W * 0.62, H * 0.28); ctx.lineTo(W * 0.62, H * 0.28);
+  ctx.lineTo(W * 0.5, H * 0.58); ctx.lineTo(-W * 0.5, H * 0.58);
+  ctx.closePath(); ctx.fill();
+  // Headlights
+  ctx.save(); ctx.shadowColor = '#FFFFCC'; ctx.shadowBlur = 14; ctx.fillStyle = '#FFFFCC';
+  ctx.beginPath(); ctx.ellipse(-W * 0.6, -H * 0.78, 6, 5, 0.22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(W * 0.6, -H * 0.78, 6, 5, -0.22, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // Tail lights
+  ctx.save(); ctx.shadowColor = '#FF0000'; ctx.shadowBlur = 15; ctx.fillStyle = '#FF2222';
+  ctx.fillRect(-W, H * 0.78, W * 0.7, 5); ctx.fillRect(W * 0.3, H * 0.78, W * 0.7, 5);
+  ctx.restore();
+  // Wheels
+  ctx.fillStyle = '#0D0D0D';
+  ctx.beginPath(); ctx.ellipse(-W * 1.12, -H * 0.5, 8, 6, 0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(W * 1.12, -H * 0.5, 8, 6, -0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-W * 1.12, H * 0.52, 8, 6, 0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(W * 1.12, H * 0.52, 8, 6, -0.14, 0, Math.PI * 2); ctx.fill();
+  // Underglow strip on car
+  ctx.save(); ctx.shadowColor = gc; ctx.shadowBlur = 20;
+  var ug = ctx.createLinearGradient(-W, H, W, H);
+  ug.addColorStop(0, 'rgba(0,0,0,0)'); ug.addColorStop(0.2, gc);
+  ug.addColorStop(0.8, gc); ug.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = ug; ctx.globalAlpha = 0.8 * pulse; ctx.fillRect(-W, H + 1, W * 2, 4); ctx.restore();
+  ctx.restore(); // end translate
+
+  // Car name
+  ctx.fillStyle = '#CCAAFF'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center';
+  ctx.fillText(BODY_COLORS[selBody].name + '  +  ' + GLOW_COLORS[selGlow].name + ' Glow', cx, cy + H + 42);
+}
+
+// ================================================================
+// DRAW: COLOUR SWATCHES
+// ================================================================
+function drawSwatches() {
+  // Body colour section
+  ctx.fillStyle = '#8899BB'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+  ctx.fillText('BODY COLOUR', swatchStartX, swatchStartY - 14);
+
+  for (var i = 0; i < BODY_COLORS.length; i++) {
+    var z = bodyZones[i], bc = BODY_COLORS[i];
+    var sel = (i === selBody);
+
+    // Swatch bg
+    rrect(z.x, z.y, z.w, z.h, 8);
+    if (sel) {
+      ctx.save(); ctx.shadowColor = bc.c; ctx.shadowBlur = 16;
+      ctx.fillStyle = bc.c; ctx.fill(); ctx.restore();
+    } else {
+      ctx.fillStyle = bc.c; ctx.fill();
+    }
+
+    // Border
+    ctx.strokeStyle = sel ? '#FFFFFF' : 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = sel ? 2.5 : 1;
+    rrect(z.x, z.y, z.w, z.h, 8); ctx.stroke();
+
+    // Checkmark
+    if (sel) {
+      ctx.save(); ctx.shadowColor = '#FFFFFF'; ctx.shadowBlur = 8;
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(z.x + z.w * 0.25, z.y + z.h * 0.5);
+      ctx.lineTo(z.x + z.w * 0.45, z.y + z.h * 0.7);
+      ctx.lineTo(z.x + z.w * 0.75, z.y + z.h * 0.3);
+      ctx.stroke(); ctx.restore();
+    }
+  }
+
+  // Glow colour section
+  ctx.fillStyle = '#8899BB'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+  ctx.fillText('NEON GLOW', glowStartX, glowStartY - 14);
+
+  for (var j = 0; j < GLOW_COLORS.length; j++) {
+    var gz = glowZones[j], gc = GLOW_COLORS[j];
+    var gsel = (j === selGlow);
+
+    // Dark bg
+    ctx.fillStyle = '#0C0C1E'; rrect(gz.x, gz.y, gz.w, gz.h, gz.w / 2); ctx.fill();
+
+    // Glow dot
+    ctx.save();
+    if (gsel) { ctx.shadowColor = gc.c; ctx.shadowBlur = 20; }
+    ctx.fillStyle = gc.c;
+    ctx.beginPath(); ctx.arc(gz.x + gz.w / 2, gz.y + gz.h / 2, gsel ? 14 : 11, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Border
+    ctx.strokeStyle = gsel ? '#FFFFFF' : 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = gsel ? 2.5 : 1;
+    rrect(gz.x, gz.y, gz.w, gz.h, gz.w / 2); ctx.stroke();
+  }
+}
+
+// ================================================================
+// DRAW: ACTION BUTTONS
+// ================================================================
+function drawActionButtons() {
+  // SAVE & RACE
+  var pulse = 0.65 + 0.35 * Math.sin(frame * 0.06);
+  ctx.save(); ctx.globalAlpha = pulse;
+  ctx.shadowColor = '#00DDAA'; ctx.shadowBlur = 22;
+  ctx.fillStyle = '#00BB88'; rrect(BTN_SAVE.x, BTN_SAVE.y, BTN_SAVE.w, BTN_SAVE.h, 26); ctx.fill();
+  ctx.shadowBlur = 0; ctx.fillStyle = '#000020';
+  ctx.font = 'bold 18px Arial Black, Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('SAVE & RACE', GW / 2, BTN_SAVE.y + BTN_SAVE.h / 2); ctx.restore();
+
+  // BACK
+  ctx.save(); ctx.globalAlpha = 0.8;
+  ctx.fillStyle = 'rgba(30,20,50,0.8)'; rrect(BTN_BACK.x, BTN_BACK.y, BTN_BACK.w, BTN_BACK.h, 20); ctx.fill();
+  ctx.strokeStyle = 'rgba(180,100,255,0.35)'; ctx.lineWidth = 1;
+  rrect(BTN_BACK.x, BTN_BACK.y, BTN_BACK.w, BTN_BACK.h, 20); ctx.stroke();
+  ctx.fillStyle = '#BBAACC'; ctx.font = '13px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('\u2190 BACK', GW / 2, BTN_BACK.y + BTN_BACK.h / 2); ctx.restore();
+}
+
+// ================================================================
+// MAIN DRAW + LOOP
+// ================================================================
+function draw() {
+  ctx.clearRect(0, 0, GW, GH);
+  drawBg();
+  drawHeader();
+  drawCarPreview();
+  drawSwatches();
+  drawActionButtons();
+}
+
+function loop() { frame++; draw(); requestAnimationFrame(loop); }
+
+// ================================================================
+// INPUT
+// ================================================================
+function getXY(cx, cy) {
+  var r = canvas.getBoundingClientRect();
+  return { x: (cx - r.left) * (GW / r.width), y: (cy - r.top) * (GH / r.height) };
+}
+
+function saveAndRace() {
+  localStorage.setItem('dalton_car_color',  BODY_COLORS[selBody].c);
+  localStorage.setItem('dalton_car_color2', BODY_COLORS[selBody].d);
+  localStorage.setItem('dalton_glow_color', GLOW_COLORS[selGlow].c);
+  window.location.href = 'game.html';
+}
+
+function handleTap(gx, gy) {
+  if (inRect(gx, gy, BTN_HEAD)) { window.location.href = 'index.html'; return; }
+  if (inRect(gx, gy, BTN_SAVE)) { saveAndRace(); return; }
+  if (inRect(gx, gy, BTN_BACK)) { window.location.href = 'index.html'; return; }
+  // Body colour swatches
+  for (var i = 0; i < bodyZones.length; i++) {
+    if (inRect(gx, gy, bodyZones[i])) { selBody = i; return; }
+  }
+  // Glow colour swatches
+  for (var j = 0; j < glowZones.length; j++) {
+    if (inRect(gx, gy, glowZones[j])) { selGlow = j; return; }
+  }
+}
+
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  var p = getXY(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  handleTap(p.x, p.y);
+}, { passive: false });
+canvas.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('mousedown', function(e) {
+  var p = getXY(e.clientX, e.clientY); handleTap(p.x, p.y);
+});
+document.addEventListener('keydown', function(e) {
+  if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); saveAndRace(); }
+  if (e.keyCode === 27 || e.keyCode === 8) window.location.href = 'index.html';
+});
+
+loop();
+</script>
+</body>
+</html>
