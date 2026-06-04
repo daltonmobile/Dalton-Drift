@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#06000f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <title>Dalton Drift</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- SCREENS -->
+    <div id="screen-menu" class="screen active">
+      <div class="menu-bg-glow"></div>
+      <div class="menu-content">
+        <div class="logo">
+          <span class="logo-dalton">DALTON</span>
+          <span class="logo-drift">DRIFT</span>
+        </div>
+        <div class="best-distance" id="menuBest">Best: 0 m</div>
+
+        <div class="menu-cam-selector">
+          <div class="selector-label">CAMERA MODE</div>
+          <div class="selector-row">
+            <button class="cam-option active" data-cam="highway" onclick="UI.selectCam(this,'highway')">
+              <span class="cam-icon">🛣</span>
+              <span>Highway</span>
+            </button>
+            <button class="cam-option" data-cam="topdown" onclick="UI.selectCam(this,'topdown')">
+              <span class="cam-icon">🔭</span>
+              <span>Top-Down</span>
+            </button>
+          </div>
+        </div>
+
+        <button class="btn-play" onclick="Game.start()">
+          <span class="btn-play-inner">PLAY</span>
+        </button>
+
+        <div class="menu-links">
+          <button class="menu-link" onclick="UI.showScreen('screen-achievements')">Achievements</button>
+          <button class="menu-link" onclick="UI.showScreen('screen-settings')">Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-achievements" class="screen">
+      <div class="screen-header">
+        <button class="back-btn" onclick="UI.showScreen('screen-menu')">← BACK</button>
+        <h2>Achievements</h2>
+      </div>
+      <div class="achievement-list" id="achievementList"></div>
+    </div>
+
+    <div id="screen-settings" class="screen">
+      <div class="screen-header">
+        <button class="back-btn" onclick="UI.showScreen('screen-menu')">← BACK</button>
+        <h2>Settings</h2>
+      </div>
+      <div class="settings-list">
+        <div class="setting-row">
+          <span>Sound</span>
+          <button class="toggle-btn" id="toggleSound" onclick="UI.toggleSetting('sound')">ON</button>
+        </div>
+        <div class="setting-row">
+          <span>Vibration</span>
+          <button class="toggle-btn" id="toggleVibration" onclick="UI.toggleSetting('vibration')">ON</button>
+        </div>
+        <div class="setting-row">
+          <span>Camera Mode</span>
+          <button class="toggle-btn" id="toggleCamera" onclick="UI.toggleSetting('camera')">HIGHWAY</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- HUD (visible during play) -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hud-distance">
+          <div class="hud-dist-val" id="hudDist">0<span>m</span></div>
+          <div class="hud-dist-label">DISTANCE</div>
+        </div>
+        <div class="hud-score-center">
+          <div class="hud-score-val" id="hudScore">0</div>
+          <div class="hud-score-label">SCORE</div>
+        </div>
+        <button class="hud-pause-btn" onclick="Game.togglePause()">⏸</button>
+      </div>
+      <div class="hud-speed">
+        <span id="hudSpeed">0</span>
+        <span class="hud-speed-unit">km/h</span>
+      </div>
+      <div class="near-miss-popup" id="nearMissPopup">NEAR MISS <span>+50</span></div>
+    </div>
+
+    <!-- PAUSE overlay -->
+    <div id="overlay-pause" class="overlay hidden">
+      <div class="overlay-box">
+        <div class="overlay-title">PAUSED</div>
+        <button class="btn-overlay" onclick="Game.togglePause()">RESUME</button>
+        <button class="btn-overlay secondary" onclick="Game.quit()">QUIT</button>
+      </div>
+    </div>
+
+    <!-- GAME OVER overlay -->
+    <div id="overlay-gameover" class="overlay hidden">
+      <div class="overlay-box">
+        <div class="overlay-title gameover-title">GAME OVER</div>
+        <div class="overlay-stat">
+          <span>Distance</span><span id="goDistance">0 m</span>
+        </div>
+        <div class="overlay-stat">
+          <span>Score</span><span id="goScore">0</span>
+        </div>
+        <div class="overlay-stat best-line">
+          <span>Best</span><span id="goBest">0 m</span>
+        </div>
+        <button class="btn-overlay" onclick="Game.start()">PLAY AGAIN</button>
+        <button class="btn-overlay secondary" onclick="Game.quit()">MAIN MENU</button>
+      </div>
+    </div>
+
+    <!-- Touch zones -->
+    <div id="touch-left" class="touch-zone"></div>
+    <div id="touch-right" class="touch-zone"></div>
+  </div>
+
+  <!-- Scripts in load order -->
+  <script src="js/utils.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/road.js"></script>
+  <script src="js/traffic.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/achievements.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
